@@ -1,80 +1,151 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get started with the Sandbox SDK in minutes"
 ---
 
-## Get started in three steps
+## Installation
 
-Get your documentation site running locally and make your first customization.
+Install the Sandbox SDK using your preferred package manager:
 
-### Step 1: Set up your local environment
+<CodeGroup>
+```bash npm
+npm install @usesandbox/sdk
+```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash yarn
+yarn add @usesandbox/sdk
+```
 
-### Step 2: Deploy your changes
+```bash pnpm
+pnpm add @usesandbox/sdk
+```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+```bash bun
+bun add @usesandbox/sdk
+```
+</CodeGroup>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Authentication
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Set your API key as an environment variable:
 
-### Step 3: Go live
+```bash
+export SANDBOX_API_KEY=your-api-key-here
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Or pass it directly when initializing the client:
 
-## Next steps
+```typescript
+import { Sandbox } from "@usesandbox/sdk";
 
-Now that you have your docs running, explore these key features:
+const client = Sandbox({
+  apiKey: "your-api-key-here"
+});
+```
+
+## Basic Usage
+
+### Create a Sandbox
+
+Create a new sandbox with a Docker image:
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:lts-alpine"
+});
+```
+
+With custom timeout (defaults to 10 minutes):
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:lts-alpine",
+  timeoutMs: 600000 // 10 minutes
+});
+```
+
+### Execute Commands
+
+Execute commands using array syntax (direct execution):
+
+```typescript
+const result = await sandbox.exec(["echo", "Hello World"]);
+console.log(result.stdout); // "Hello World\n"
+console.log(result.exitCode); // 0
+```
+
+Or using string syntax (shell execution):
+
+```typescript
+const result = await sandbox.exec("npm install && npm test");
+```
+
+### Get Sandbox Info
+
+Fetch current sandbox state:
+
+```typescript
+const info = await sandbox.info();
+console.log(info.state); // "started"
+console.log(info.name); // "sandbox-node-1"
+```
+
+### List Sandboxes
+
+List all sandboxes in your organization:
+
+```typescript
+const sandboxes = await client.sandboxes.list();
+for (const sb of sandboxes) {
+  console.log(`${sb.id}: ${sb.data.state}`);
+}
+```
+
+### Refresh State
+
+Refresh sandbox data from the server:
+
+```typescript
+const updated = await sandbox.refresh();
+console.log(updated.state);
+```
+
+### Delete Sandbox
+
+Clean up when you're done:
+
+```typescript
+await sandbox.kill();
+```
+
+## Complete Example
+
+```typescript
+import { Sandbox } from "@usesandbox/sdk";
+
+const client = Sandbox();
+
+// Create sandbox
+const sandbox = await client.sandboxes.create({
+  image: "node:lts-alpine"
+});
+
+// Execute commands
+const result = await sandbox.exec(["node", "--version"]);
+console.log(result.stdout); // v20.x.x
+
+// Clean up
+await sandbox.kill();
+```
+
+## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api-reference/introduction">
+    Explore the complete API documentation
+  </Card>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Advanced Usage" icon="rocket" href="/advanced">
+    Learn about timeouts, error handling, and more
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
