@@ -1,54 +1,271 @@
 {
-  "openapi": "3.1.0",
+  "openapi": "3.0.0",
   "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
-    "license": {
-      "name": "MIT"
-    },
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "title": "Sandbox API"
   },
   "servers": [
     {
-      "url": "http://sandbox.mintlify.com"
+      "url": "https://api.usesandbox.dev/"
     }
   ],
-  "security": [
-    {
-      "bearerAuth": []
-    }
-  ],
-  "paths": {
-    "/plants": {
-      "get": {
-        "description": "Returns all plants from the system that the user has access to",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "The maximum number of results to return",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
+  "components": {
+    "schemas": {
+      "Sandbox": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "e7847229c547d8"
+          },
+          "name": {
+            "type": "string",
+            "example": "sandbox-node-1"
+          },
+          "state": {
+            "type": "string",
+            "example": "started"
+          },
+          "region": {
+            "type": "string",
+            "example": "iad"
+          },
+          "flyAppName": {
+            "type": "string",
+            "example": "sandbox-shared-app"
+          },
+          "image": {
+            "type": "string",
+            "example": "node:18-alpine"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date",
+            "example": "2023-12-01T00:00:00Z"
+          },
+          "stopAt": {
+            "type": "string",
+            "format": "date",
+            "example": "2023-12-01T01:00:00Z"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "region",
+          "flyAppName",
+          "image",
+          "createdAt",
+          "stopAt"
+        ]
+      },
+      "SandboxListResponse": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "example": 2
+          },
+          "sandboxes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sandbox"
             }
           }
-        ],
+        },
+        "required": [
+          "count",
+          "sandboxes"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "number",
+            "example": 422
+          },
+          "message": {
+            "type": "string",
+            "example": "Validation failed: Name has already been taken"
+          },
+          "details": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ShowSandboxResponse": {
+        "type": "object",
+        "properties": {
+          "sandbox": {
+            "$ref": "#/components/schemas/Sandbox"
+          }
+        },
+        "required": [
+          "sandbox"
+        ]
+      },
+      "CreateSandboxResponse": {
+        "type": "object",
+        "properties": {
+          "sandbox": {
+            "$ref": "#/components/schemas/Sandbox"
+          }
+        },
+        "required": [
+          "sandbox"
+        ]
+      },
+      "SandboxCreate": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string",
+            "example": "node:18-alpine",
+            "description": "Docker image to run inside the shared Fly app"
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "example": 600000,
+            "description": "Optional timeout in milliseconds for the sandbox. Defaults to 10 minutes (600000ms). Maximum 1 hour (3600000ms) from creation for FREE users."
+          }
+        },
+        "required": [
+          "image"
+        ]
+      },
+      "UpdateTimeoutSandboxResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "e7847229c547d8"
+          },
+          "stopAt": {
+            "type": "string",
+            "format": "date",
+            "example": "2023-12-01T01:00:00Z"
+          }
+        },
+        "required": [
+          "id",
+          "stopAt"
+        ]
+      },
+      "UpdateTimeoutSandboxBody": {
+        "type": "object",
+        "properties": {
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "example": 600000,
+            "description": "Timeout in milliseconds to extend or reduce the sandbox lifetime. Maximum 1 hour (3600000ms) from creation time for FREE users."
+          }
+        },
+        "required": [
+          "timeoutMs"
+        ]
+      },
+      "ExecSandboxResponse": {
+        "type": "object",
+        "properties": {
+          "stdout": {
+            "type": "string",
+            "example": "hello\n"
+          },
+          "stderr": {
+            "type": "string",
+            "example": ""
+          },
+          "exitCode": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "stdout",
+          "stderr",
+          "exitCode",
+          "success"
+        ]
+      },
+      "ExecSandboxBody": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            ],
+            "example": "npm install",
+            "description": "Command to execute. String commands are executed via /bin/sh -c (requires shell in image). Array commands are executed directly (works in minimal images without shell)."
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "timeout": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "example": 10
+              },
+              "stdin": {
+                "type": "string",
+                "example": "input text"
+              },
+              "container": {
+                "type": "string",
+                "example": "app"
+              }
+            }
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    },
+    "parameters": {
+
+    }
+  },
+  "paths": {
+    "/api/v1/sandboxes": {
+      "get": {
         "responses": {
           "200": {
-            "description": "Plant response",
+            "description": "List all sandboxes for an organization",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
-                  }
+                  "$ref": "#/components/schemas/SandboxListResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Unexpected error",
+            "description": "Active organization missing",
             "content": {
               "application/json": {
                 "schema": {
@@ -60,31 +277,59 @@
         }
       },
       "post": {
-        "description": "Creates a new plant in the store",
         "requestBody": {
-          "description": "Plant to add to the store",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/SandboxCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
-          "200": {
-            "description": "plant response",
+          "201": {
+            "description": "Sandbox created",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Plant"
+                  "$ref": "#/components/schemas/CreateSandboxResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "unexpected error",
+            "description": "Bad request or validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Concurrency limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Template not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -96,28 +341,123 @@
         }
       }
     },
-    "/plants/{id}": {
-      "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
+    "/api/v1/sandboxes/:id": {
+      "get": {
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "description": "ID of plant to delete",
-            "required": true,
             "schema": {
-              "type": "integer",
-              "format": "int64"
+              "type": "string",
+              "example": "e7847229c547d8"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sandbox details from database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowSandboxResponse"
+                }
+              }
             }
+          },
+          "400": {
+            "description": "Active organization missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          }
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "e7847229c547d8"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
           }
         ],
         "responses": {
           "204": {
-            "description": "Plant deleted",
-            "content": {}
+            "description": "Sandbox deleted"
           },
           "400": {
-            "description": "unexpected error",
+            "description": "Active organization missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          }
+        }
+      }
+    },
+    "/api/v1/sandboxes/:id/timeout": {
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "e7847229c547d8"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTimeoutSandboxBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Timeout updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateTimeoutSandboxResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - timeout exceeds limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -128,89 +468,129 @@
           }
         }
       }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
+    },
+    "/api/v1/sandboxes/:id/exec": {
       "post": {
-        "description": "Information about a new plant added to the store",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "e7847229c547d8"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
         "requestBody": {
-          "description": "Plant added to the store",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/ExecSandboxBody"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
-          },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
-          }
-        }
-      },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
-          },
-          {
-            "required": [
-              "id"
-            ],
-            "type": "object",
-            "properties": {
-              "id": {
-                "description": "Identification number of the plant",
-                "type": "integer",
-                "format": "int64"
+            "description": "Command executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecSandboxResponse"
+                }
               }
             }
-          }
-        ]
-      },
-      "Error": {
-        "required": [
-          "error",
-          "message"
-        ],
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "integer",
-            "format": "int32"
           },
-          "message": {
-            "type": "string"
+          "400": {
+            "description": "Active organization missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
           }
         }
       }
     },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
+    "/admin/tasks/billing": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Billing tick executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bucketsFlushed": {
+                      "type": "number"
+                    },
+                    "triggeredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "bucketsFlushed",
+                    "triggeredAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to run billing"
+          }
+        }
+      }
+    },
+    "/admin/tasks/autostop": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Auto-stop tick executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stopped": {
+                      "type": "number"
+                    },
+                    "failed": {
+                      "type": "number"
+                    },
+                    "triggeredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "stopped",
+                    "failed",
+                    "triggeredAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to run auto-stop"
+          }
+        }
       }
     }
   }
