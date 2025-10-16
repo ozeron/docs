@@ -22,6 +22,12 @@
             ]
           },
           {
+            "group": "SDK Guides",
+            "pages": [
+              "file-operations"
+            ]
+          },
+          {
             "group": "Customization",
             "pages": [
               "essentials/settings",
