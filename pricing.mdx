@@ -1,0 +1,40 @@
+---
+title: "Pricing"
+description: "Understand how Sandbox compute credits translate into dollars"
+---
+
+## Billing overview
+
+You pay only for the compute time you actually use. Every sandbox session accrues credits for active CPU cores and the RAM it keeps allocated, billed to the second. When a sandbox stops, billing stops too.
+
+
+## Pricing model
+
+- **Compute credits**: Subscription plans ($10 Hobby, $50 Pro) include monthly pools of credits. $1.00 worth of credits equals 1,000,000 units.
+- **vCPU usage**: Each vCPU-second consumes 7 credits, giving you transparent per-second pricing.
+- **RAM usage**: Each gigabyte-second consumes 2.25 credits, so you can scale memory without surprises.
+- **Token packs**: Need a short-lived burst? Add 100,000 credits for $1.00 with no commitment.
+- **Concurrency**: Plan limits keep teams within budget—Free users can run up to 3 sandboxes, Hobby up to 10, and Pro up to 100 simultaneously.
+
+## Current rates
+
+| Meter | USD / second | USD / hour | USD / 30-day month* |
+| --- | --- | --- | --- |
+| vCPU (per core) | $0.000007 | $0.0252 | $18.40 |
+| RAM (per GB) | $0.00000225 | $0.0081 | $5.91 |
+
+<Note>
+  *Monthly estimates assume 730 hours (average month). Actual charges reflect precise runtime.
+</Note>
+
+## Plan allowances
+
+- **Free**: 1,000,000 credits/month, up to 3 concurrent sandboxes, 10 sandbox tokens monthly.
+- **Hobby ($10/month)**: 10,000,000 credits/month, 10 concurrent sandboxes.
+- **Pro ($50/month)**: 50,000,000 credits/month, 100 concurrent sandboxes.
+
+Plan items map directly to Autumn products in `server/autumn.config.ts`, so changing plan instantly updates the allowances that the API enforces during sandbox creation and timeout extensions.
+
+<Tip>
+  Custom sandboxes with dedicated hardware profiles are coming soon. Reach out if you need higher memory, GPU options, or reserved capacity.
+</Tip>
