@@ -7,7 +7,7 @@
     "light": "#FFE070",
     "dark": "#C17A00"
   },
-  "favicon": "/flybox.svg",
+  "favicon": "/favicon.ico",
   "navigation": {
     "tabs": [
       {
