@@ -66,15 +66,15 @@ const sandbox = await client.sandboxes.create({
 
 ### Execute Commands
 
-Execute commands using array syntax (direct execution):
+Execute commands using string syntax (shell execution):
 
 ```typescript
-const result = await sandbox.exec(["echo", "Hello World"]);
+const result = await sandbox.exec("echo 'Hello World'");
 console.log(result.stdout); // "Hello World\n"
 console.log(result.exitCode); // 0
 ```
 
-Or using string syntax (shell execution):
+Commands support shell features like pipes, variables, and globs:
 
 ```typescript
 const result = await sandbox.exec("npm install && npm test");
@@ -131,7 +131,7 @@ const sandbox = await client.sandboxes.create({
 });
 
 // Execute commands
-const result = await sandbox.exec(["node", "--version"]);
+const result = await sandbox.exec("node --version");
 console.log(result.stdout); // v20.x.x
 
 // Clean up
