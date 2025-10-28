@@ -1,0 +1,281 @@
+---
+title: "Troubleshooting"
+description: "Common issues and solutions"
+---
+
+## Need help?
+
+For immediate assistance, use the **Crisp chat widget** in the bottom-right corner of our [landing page](https://usesandbox.dev) or web app to reach our support team directly.
+
+This guide covers common issues and their solutions. If you don't find what you're looking for, don't hesitate to reach out.
+
+---
+
+## API errors
+
+### Catching errors
+
+All API errors throw `SandboxApiError` with HTTP status and response details:
+
+```typescript
+import { Sandbox, SandboxApiError } from "@usesandbox/sdk";
+
+const client = Sandbox();
+
+try {
+  await client.sandboxes.list();
+} catch (error) {
+  if (error instanceof SandboxApiError) {
+    console.error("Status:", error.status);
+    console.error("Message:", error.response.message);
+    console.error("Details:", error.response.details);
+  }
+}
+```
+
+### Common API errors
+
+**401 Unauthorized**
+- Invalid or missing API key
+- Check `SANDBOX_API_KEY` environment variable
+- Verify key in dashboard
+
+**404 Not Found**
+- Sandbox ID doesn't exist or was deleted
+- Sandbox belongs to different organization
+
+**400 Bad Request**
+- Invalid parameters (e.g., negative timeout)
+- Malformed request body
+
+**429 Too Many Requests**
+- Rate limit exceeded
+- Wait and retry with exponential backoff
+
+## Networking issues
+
+### Connection refused
+
+**Symptoms**: Can't reach exposed service, connection refused errors
+
+**Solutions**:
+
+1. **Check IPv6 binding**:
+```typescript
+// ❌ Wrong - IPv4 only
+app.listen(3000, '0.0.0.0');
+
+// ✅ Correct - IPv6
+app.listen(3000, '::');
+```
+
+2. **Verify process is running**:
+```typescript
+const ps = await sandbox.exec("ps aux | grep server");
+console.log(ps.stdout);
+```
+
+3. **Check server logs**:
+```typescript
+const logs = await sandbox.exec("tail -n 100 /tmp/server.log");
+console.log(logs.stdout);
+```
+
+4. **Wait for server startup**:
+```typescript
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Wait 2 seconds for startup
+await new Promise(r => setTimeout(r, 2000));
+
+const host = sandbox.expose(3000);
+```
+### Invalid port
+
+**Error**: "Invalid port provided"
+
+**Solution**: Port must be a positive integer:
+
+```typescript
+// ❌ Wrong
+sandbox.expose(0);
+sandbox.expose(-1);
+sandbox.expose(NaN);
+
+// ✅ Correct
+sandbox.expose(3000);
+sandbox.expose(8080);
+```
+
+## Command execution issues
+
+### Timeout errors
+
+**Symptoms**: Commands fail with timeout
+
+**Solutions**:
+
+1. **Increase timeout** (max 60s):
+```typescript
+await sandbox.exec("npm install", {
+  timeoutMs: 60_000  // 60 seconds
+});
+```
+
+2. **Use background mode** for long-running processes:
+```typescript
+await sandbox.exec("python train.py >/tmp/train.log 2>&1", {
+  background: true
+});
+```
+
+3. **Split into smaller commands**:
+```typescript
+// Instead of one long command
+await sandbox.exec("npm install", { timeoutMs: 30_000 });
+await sandbox.exec("npm build", { timeoutMs: 30_000 });
+await sandbox.exec("npm test", { timeoutMs: 30_000 });
+```
+
+### Command fails silently
+
+**Symptoms**: Command returns success but doesn't work
+
+**Solutions**:
+
+1. **Check exit code and stderr**:
+```typescript
+const result = await sandbox.exec("my-command");
+if (!result.success || result.exitCode !== 0) {
+  console.error("Failed:", result.stderr);
+}
+```
+
+2. **Add error handling in shell**:
+```typescript
+await sandbox.exec("set -e && npm install && npm test");
+```
+
+### Background process exits immediately
+
+**Symptoms**: Background process doesn't stay running
+
+**Solutions**:
+
+1. **Check logs for errors**:
+```typescript
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true
+});
+
+await new Promise(r => setTimeout(r, 1000));
+
+const logs = await sandbox.exec("cat /tmp/server.log");
+console.log(logs.stdout);
+```
+
+2. **Verify process is running**:
+```typescript
+const pid = await sandbox.exec("pgrep -f server.js || echo 'not running'");
+console.log(pid.stdout);
+```
+
+## File operation issues
+
+### File size limit exceeded
+
+**Error**: `FileSizeError: File size X bytes exceeds maximum allowed size`
+
+**Solution**: SDK enforces 10 MB limit per write:
+
+```typescript
+// For large files, split or host externally
+const chunkSize = 5 * 1024 * 1024; // 5 MB chunks
+
+for (let i = 0; i < data.length; i += chunkSize) {
+  const chunk = data.slice(i, i + chunkSize);
+  await sandbox.files.write(`/tmp/data.part${i}`, chunk);
+}
+
+// Combine inside sandbox
+await sandbox.exec("cat /tmp/data.part* > /tmp/data.bin");
+```
+
+### File not found
+
+**Symptoms**: Read fails with "Failed to read file"
+
+**Solution**: Check if file exists before reading:
+
+```typescript
+const check = await sandbox.exec("test -f /app/config.json && echo exists || echo missing");
+if (check.stdout.includes("exists")) {
+  const content = await sandbox.files.read("/app/config.json");
+}
+```
+
+## Sandbox management issues
+
+### Sandbox stops unexpectedly
+
+**Symptoms**: Sandbox terminates before work completes
+
+**Solutions**:
+
+1. **Check stopAt timestamp**:
+```typescript
+const info = await sandbox.info();
+console.log("Stops at:", info.stopAt);
+```
+
+2. **Extend timeout proactively**:
+```typescript
+// Extend by 15 minutes
+await sandbox.setTimeout(15 * 60_000);
+```
+
+3. **Set longer timeout on creation**:
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:lts",
+  timeoutMs: 30 * 60_000  // 30 minutes
+});
+```
+
+### Can't rehydrate sandbox by ID
+
+**Error**: 404 when calling `get(id)`
+
+**Reasons**:
+- Sandbox was deleted
+- Sandbox timed out and auto-terminated
+- ID belongs to different organization
+- Typo in ID
+
+**Solution**: Check sandbox still exists:
+
+```typescript
+const sandboxes = await client.sandboxes.list();
+const exists = sandboxes.some(s => s.id === savedId);
+
+if (exists) {
+  const sandbox = await client.sandboxes.get(savedId);
+} else {
+  console.log("Sandbox no longer exists");
+}
+```
+
+## Getting help
+
+If you're still experiencing issues:
+
+1. **Check logs**: Review sandbox execution logs and stderr output
+2. **Verify configuration**: Double-check API keys, image names, and parameters
+3. **Test locally**: Try reproducing with Docker locally first
+4. **Contact support**: Reach out via the app with:
+   - Sandbox ID
+   - Error messages
+   - Steps to reproduce
+   - Expected vs actual behavior

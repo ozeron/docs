@@ -138,10 +138,79 @@ console.log(result.stdout); // v20.x.x
 await sandbox.kill();
 ```
 
+## Key Concepts
+
+### Timeouts
+
+Sandboxes auto-stop after 10 minutes by default. Extend the timeout:
+
+```typescript
+await sandbox.setTimeout(30 * 60_000); // 30 minutes
+```
+
+See [Sandbox Management](sandbox-management) for details.
+
+### Files
+
+Read and write files (text and binary, up to 10 MB):
+
+```typescript
+// Write
+await sandbox.files.write("/app/config.json", JSON.stringify({ key: "value" }));
+
+// Read
+const content = await sandbox.files.read("/app/config.json");
+```
+
+See [File Operations](files) for binary examples and patterns.
+
+### Background Processes
+
+Run servers without blocking:
+
+```typescript
+await sandbox.exec("python server.py >/tmp/server.log 2>&1", {
+  background: true
+});
+```
+
+See [Command Execution](command-execution) for process management.
+
+### Exposing Services
+
+Your server must bind to IPv6 (`::`):
+
+```python
+# Flask
+app.run(host='::', port=5000)
+```
+
+```typescript
+const host = sandbox.expose(5000);
+console.log(`https://${host}`);
+```
+
+See [Networking](networking) for framework examples.
+
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="API Reference" icon="code" href="/api-reference/introduction">
-    Explore the complete API documentation
+  <Card title="Sandbox Management" icon="clock" href="sandbox-management">
+    Manage lifecycle, timeouts, and state
+  </Card>
+  <Card title="File Operations" icon="file" href="files">
+    Read and write text and binary files
+  </Card>
+  <Card title="Command Execution" icon="terminal" href="command-execution">
+    Run commands and background processes
+  </Card>
+  <Card title="Networking" icon="globe" href="networking">
+    Expose services via public URLs
+  </Card>
+  <Card title="Pricing" icon="dollar-sign" href="pricing">
+    Understand billing and costs
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="troubleshooting">
+    Common issues and solutions
   </Card>
 </CardGroup>

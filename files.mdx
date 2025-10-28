@@ -1,0 +1,180 @@
+---
+title: "File Operations"
+description: "Read and write files inside sandbox filesystems"
+---
+
+## Overview
+
+The SDK provides file operations for reading and writing both text and binary content inside sandboxes. All operations use absolute paths.
+
+## Size limits
+
+- **Max write size**: 10 MB per file (enforced by SDK)
+- For larger files, consider streaming from your app or hosting assets externally
+
+## Writing files
+
+### Text files
+
+```typescript
+// Write JSON config
+await sandbox.files.write(
+  "/app/config.json",
+  JSON.stringify({ enabled: true, port: 3000 })
+);
+
+// Write script
+await sandbox.files.write(
+  "/tmp/script.sh",
+  "#!/bin/bash\necho 'Hello from sandbox'\n"
+);
+```
+
+### Binary files
+
+Write binary data using `ArrayBuffer` or `Uint8Array`:
+
+```typescript
+import { readFile } from "node:fs/promises";
+
+// Upload a local image
+const imageBytes = await readFile("./logo.png"); // Node Buffer
+await sandbox.files.write("/tmp/logo.png", new Uint8Array(imageBytes));
+
+// Write raw bytes
+const data = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
+await sandbox.files.write("/tmp/data.bin", data);
+```
+
+## Reading files
+
+### Text files
+
+```typescript
+// Read as UTF-8 string (default)
+const config = await sandbox.files.read("/app/config.json");
+const parsed = JSON.parse(config);
+
+// Read logs
+const logs = await sandbox.files.read("/tmp/server.log");
+console.log(logs);
+```
+
+### Binary files
+
+```typescript
+// Read as ArrayBuffer
+const buffer = await sandbox.files.read("/tmp/logo.png", {
+  encoding: "binary"
+});
+
+console.log((buffer as ArrayBuffer).byteLength);
+
+// Convert to Uint8Array if needed
+const bytes = new Uint8Array(buffer as ArrayBuffer);
+```
+
+## Common patterns
+
+### Upload and process
+
+```typescript
+// Upload data file
+await sandbox.files.write("/data/input.csv", csvContent);
+
+// Process it
+await sandbox.exec("python process.py /data/input.csv > /data/output.json");
+
+// Download result
+const result = await sandbox.files.read("/data/output.json");
+```
+
+### Generate and download
+
+```typescript
+// Generate file inside sandbox
+await sandbox.exec("convert input.png -resize 50% output.png");
+
+// Download the result
+const resized = await sandbox.files.read("/tmp/output.png", {
+  encoding: "binary"
+});
+```
+
+### Multi-file operations
+
+```typescript
+// Write multiple files
+await Promise.all([
+  sandbox.files.write("/app/index.js", jsCode),
+  sandbox.files.write("/app/package.json", packageJson),
+  sandbox.files.write("/app/.env", envVars)
+]);
+
+// Read multiple files
+const [logs, config, output] = await Promise.all([
+  sandbox.files.read("/tmp/app.log"),
+  sandbox.files.read("/app/config.json"),
+  sandbox.files.read("/tmp/result.txt")
+]);
+```
+
+## Implementation details
+
+- Files are transferred via base64 encoding over the exec API
+- Large files are chunked automatically (100KB chunks)
+- Absolute paths are required (e.g., `/tmp/file.txt`, not `file.txt`)
+- The SDK uses `cat` for reads and `printf | base64 -d` for writes
+
+## Error handling
+
+```typescript
+try {
+  const content = await sandbox.files.read("/missing/file.txt");
+} catch (error) {
+  console.error("File read failed:", error);
+}
+
+// Check if file exists first
+const check = await sandbox.exec("test -f /app/config.json && echo exists || echo missing");
+if (check.stdout.trim() === "exists") {
+  const content = await sandbox.files.read("/app/config.json");
+}
+```
+
+## Best practices
+
+### Always use absolute paths
+
+File operations require absolute paths starting with `/`:
+
+```typescript
+// ❌ Wrong - relative path
+await sandbox.files.read("config.json");
+
+// ✅ Correct - absolute path
+await sandbox.files.read("/app/config.json");
+```
+
+### Specify encoding for binary files
+
+Always use `encoding: "binary"` when working with non-text files:
+
+```typescript
+// Write binary
+await sandbox.files.write("/tmp/image.png", new Uint8Array(imageData));
+
+// Read binary - specify encoding
+const buffer = await sandbox.files.read("/tmp/image.png", {
+  encoding: "binary"
+});
+```
+
+Without the encoding parameter, binary files may be corrupted as the SDK defaults to UTF-8 text.
+
+### Other best practices
+
+- **Check size limits**: Ensure files are under 10 MB before writing
+- **Batch operations**: Use `Promise.all()` for multiple file operations
+- **Handle errors**: Wrap file operations in try-catch blocks
+- **Clean up**: Remove temporary files when done to save space

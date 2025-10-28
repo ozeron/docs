@@ -1,0 +1,123 @@
+---
+title: "Sandbox Management"
+description: "Managing sandbox lifecycle, timeouts, and state"
+---
+
+## Overview
+
+Sandboxes are ephemeral compute environments with configurable lifetimes. This guide covers creating, listing, updating, and terminating sandboxes.
+
+## Default timeout
+
+- Sandboxes auto-stop after **10 minutes** by default.
+- You can extend this when creating or via `setTimeout()`.
+- See [Pricing](/pricing) for plan limits and max lifetimes.
+
+## Creating sandboxes
+
+```typescript
+import { Sandbox } from "@usesandbox/sdk";
+
+const client = Sandbox();
+
+// Basic creation (10 minute default)
+const sandbox = await client.sandboxes.create({
+  image: "node:lts-alpine"
+});
+
+// With custom timeout
+const sandbox = await client.sandboxes.create({
+  image: "python:3.12-slim",
+  timeoutMs: 30 * 60_000 // 30 minutes
+});
+```
+
+## Extending timeout
+
+Update the timeout on an existing sandbox:
+
+```typescript
+// From a handle
+await sandbox.setTimeout(15 * 60_000); // 15 minutes
+
+// By ID only
+await client.sandboxes.setTimeout(sandbox.id, 20 * 60_000);
+```
+
+The response includes the updated `stopAt` timestamp:
+
+```typescript
+const result = await sandbox.setTimeout(10 * 60_000);
+console.log(result.stopAt); // ISO timestamp
+```
+
+## Rehydrating by ID
+
+Save the sandbox ID and recreate a handle later:
+
+```typescript
+// Save ID from initial creation
+const id = sandbox.id;
+
+// Later, in a different process/session
+const rehydrated = await client.sandboxes.get(id);
+await rehydrated.setTimeout(5 * 60_000);
+await rehydrated.kill();
+```
+
+## Listing sandboxes
+
+Get all sandboxes in your organization:
+
+```typescript
+const sandboxes = await client.sandboxes.list();
+
+for (const sb of sandboxes) {
+  console.log(`${sb.id}: ${sb.data.state}`);
+  console.log(`Stops at: ${sb.data.stopAt}`);
+}
+```
+
+## Refreshing state
+
+Fetch the latest sandbox data from the server:
+
+```typescript
+const updated = await sandbox.refresh();
+console.log(updated.state); // "started", "stopped", etc.
+
+// Or use info() which calls refresh internally
+const info = await sandbox.info();
+```
+
+## Terminating sandboxes
+
+Clean up when done:
+
+```typescript
+// From a handle
+await sandbox.kill();
+
+// By ID only (no handle required)
+await client.sandboxes.kill(sandbox.id);
+```
+
+## Sandbox data
+
+Each sandbox handle exposes:
+
+```typescript
+sandbox.id           // Unique identifier
+sandbox.data.name    // Human-readable name
+sandbox.data.state   // Current state
+sandbox.data.region  // Deployment region
+sandbox.data.stopAt  // Scheduled termination time
+sandbox.data.publicAccessUrlTemplate // For expose()
+```
+
+## Best practices
+
+- **Save IDs**: Persist sandbox IDs to kill them later without maintaining handles.
+- **Extend timeouts proactively**: Don't wait until the last second; extend before critical work.
+- **Clean up**: Always kill sandboxes when done to avoid unnecessary charges.
+- **Check stopAt**: Monitor `stopAt` to know when auto-termination will occur.

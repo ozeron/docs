@@ -1,0 +1,255 @@
+---
+title: "Networking & Exposing Services"
+description: "Expose sandbox services via public URLs"
+---
+
+## Overview
+
+Sandboxes can expose services to the internet via public tunnels. Your application must bind to IPv6 to be reachable.
+
+## IPv6 requirement
+
+Internally, sandboxes use IPv6 networking. Your server **must bind to `::`** (IPv6 all interfaces), not just `0.0.0.0` or `127.0.0.1`.
+
+### Flask (Python)
+
+```python
+from flask import Flask
+app = Flask(__name__)
+
+@app.get('/')
+def hello():
+    return 'Hello from Sandbox!'
+
+if __name__ == '__main__':
+    # Bind to IPv6
+    app.run(host='::', port=5000)
+```
+
+### Express (Node.js)
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Hello from Sandbox!' });
+});
+
+// Bind to IPv6
+app.listen(3000, '::');
+```
+
+### FastAPI (Python)
+
+```python
+import uvicorn
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello from Sandbox!"}
+
+if __name__ == "__main__":
+    # Bind to IPv6
+    uvicorn.run(app, host="::", port=8000)
+```
+
+### Go HTTP server
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        fmt.Fprintf(w, "Hello from Sandbox!")
+    })
+    
+    // Bind to IPv6
+    http.ListenAndServe("[::]:8080", nil)
+}
+```
+
+## Exposing a service
+
+Use `sandbox.expose(port)` to get the public URL:
+
+```typescript
+// Start your server (background)
+await sandbox.exec("python server.py >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Get public host
+const host = sandbox.expose(5000);
+const url = `https://${host}`;
+
+console.log(`Service available at: ${url}`);
+```
+
+## Port requirements
+
+- Port must be a positive integer
+- No default port; you must specify it explicitly
+- Common ports: 3000 (Node), 5000 (Flask), 8000 (FastAPI), 8080 (Go)
+
+```typescript
+// Valid
+const host = sandbox.expose(3000);
+
+// Invalid - will throw error
+sandbox.expose(0);      // Error: Invalid port
+sandbox.expose(-1);     // Error: Invalid port
+sandbox.expose(NaN);    // Error: Invalid port
+```
+
+## Complete example
+
+```typescript
+import { Sandbox } from "@usesandbox/sdk";
+
+const client = Sandbox();
+
+// Create sandbox
+const sandbox = await client.sandboxes.create({
+  image: "python:3.12-slim"
+});
+
+// Write Flask app
+await sandbox.files.write("server.py", `
+from flask import Flask
+app = Flask(__name__)
+
+@app.get('/')
+def hello():
+    return 'Hello from Sandbox!'
+
+if __name__ == '__main__':
+    app.run(host='::', port=5000)
+`);
+
+// Install Flask
+await sandbox.exec("pip install flask", { timeoutMs: 30_000 });
+
+// Start server
+await sandbox.exec("python server.py >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Wait for server to be ready
+await new Promise(r => setTimeout(r, 2000));
+
+// Get public URL
+const host = sandbox.expose(5000);
+console.log(`Preview: https://${host}`);
+
+// Test it
+const response = await fetch(`https://${host}`);
+const text = await response.text();
+console.log(text); // "Hello from Sandbox!"
+```
+
+## Checking server readiness
+
+```typescript
+// Start server
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Poll until port is listening
+for (let i = 0; i < 30; i++) {
+  const check = await sandbox.exec(
+    "nc -z localhost 3000 && echo ready || echo waiting"
+  );
+  
+  if (check.stdout.includes("ready")) {
+    console.log("Server is ready!");
+    break;
+  }
+  
+  await new Promise(r => setTimeout(r, 1000));
+}
+
+const host = sandbox.expose(3000);
+```
+
+## Multiple services
+
+Expose multiple ports from the same sandbox:
+
+```typescript
+// Start API on 3000
+await sandbox.exec("node api.js >/tmp/api.log 2>&1", { background: true });
+
+// Start admin panel on 8080
+await sandbox.exec("node admin.js >/tmp/admin.log 2>&1", { background: true });
+
+// Get both URLs
+const apiHost = sandbox.expose(3000);
+const adminHost = sandbox.expose(8080);
+
+console.log(`API: https://${apiHost}`);
+console.log(`Admin: https://${adminHost}`);
+```
+
+## Troubleshooting
+
+### Connection refused
+
+If you get connection refused errors:
+
+1. **Check IPv6 binding**: Ensure your app binds to `::`, not `0.0.0.0`
+2. **Verify process is running**: Use `pgrep` or `ps aux`
+3. **Check logs**: Read server logs for startup errors
+4. **Wait for readiness**: Some servers take time to start
+
+```typescript
+// Check if server is running
+const ps = await sandbox.exec("ps aux | grep server");
+console.log(ps.stdout);
+
+// Check logs
+const logs = await sandbox.exec("tail -n 50 /tmp/server.log");
+console.log(logs.stdout);
+```
+
+### Missing publicAccessUrlTemplate
+
+If `expose()` throws an error about missing template:
+
+```typescript
+// Refresh sandbox data
+await sandbox.refresh();
+
+// Then try again
+const host = sandbox.expose(3000);
+```
+
+### Port already in use
+
+```typescript
+// Kill existing process on port
+await sandbox.exec("fuser -k 3000/tcp || true");
+
+// Then start your server
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true
+});
+```
+
+## Best practices
+
+- **Always bind IPv6**: Use `::` as the host in your server configuration
+- **Use background mode**: Start servers with `{ background: true }`
+- **Redirect logs**: Capture stdout/stderr to files for debugging
+- **Wait for readiness**: Poll or sleep before calling `expose()`
+- **Handle errors**: Wrap `expose()` in try-catch and check for template
+- **Clean up**: Kill background processes before terminating sandbox

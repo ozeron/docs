@@ -1,0 +1,213 @@
+---
+title: "Command Execution"
+description: "Execute commands and run background processes in sandboxes"
+---
+
+## Overview
+
+Execute shell commands inside sandboxes using the `exec()` method. Commands run via `/bin/sh -c`, supporting pipes, variables, and shell features.
+
+## Basic execution
+
+```typescript
+// Simple command
+const result = await sandbox.exec("echo 'Hello World'");
+console.log(result.stdout);    // "Hello World\n"
+console.log(result.exitCode);  // 0
+console.log(result.success);   // true
+```
+
+## Shell features
+
+Commands support full shell syntax:
+
+```typescript
+// Pipes and redirection
+await sandbox.exec("cat file.txt | grep error > errors.log");
+
+// Multiple commands
+await sandbox.exec("npm install && npm test");
+
+// Variables and globs
+await sandbox.exec("for f in *.txt; do echo $f; done");
+
+// Environment variables
+await sandbox.exec("export PORT=3000 && node server.js");
+```
+
+## Options
+
+### Timeout
+
+Set a maximum execution time (max 60 seconds):
+
+```typescript
+const result = await sandbox.exec("npm install", {
+  timeoutMs: 30_000  // 30 seconds
+});
+```
+
+<Note>
+Max per-command timeout is 60 seconds. For long-running servers, use <code>background: true</code> and redirect output to a log file (for example, <code>>/tmp/server.log 2>&1</code>).
+</Note>
+
+### Standard input
+
+Pass data to stdin:
+
+```typescript
+await sandbox.exec("cat > /tmp/input.txt", {
+  stdin: "line 1\nline 2\nline 3\n"
+});
+
+// Or pipe data
+await sandbox.exec("python process.py", {
+  stdin: JSON.stringify({ data: [1, 2, 3] })
+});
+```
+
+## Background processes
+
+Run long-lived processes without blocking:
+
+```typescript
+// Start server in background
+await sandbox.exec("python server.py >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Command returns immediately
+// Server continues running
+```
+
+### Managing background processes
+
+Check if a process is running:
+
+```typescript
+// Find PID
+const pid = await sandbox.exec("pgrep -f server.py || echo 'not running'");
+console.log("PID:", pid.stdout.trim());
+
+// Check with ps
+const ps = await sandbox.exec("ps aux | grep server.py | grep -v grep");
+console.log(ps.stdout);
+```
+
+Read logs from background processes:
+
+```typescript
+// Tail recent logs
+const tail = await sandbox.exec("tail -n 100 /tmp/server.log");
+console.log(tail.stdout);
+
+// Follow logs (with timeout)
+const follow = await sandbox.exec("timeout 5 tail -f /tmp/server.log", {
+  timeoutMs: 6_000
+});
+```
+
+Stop a background process:
+
+```typescript
+// Kill by name
+await sandbox.exec("pkill -f server.py");
+
+// Kill by PID
+await sandbox.exec("kill 1234");
+
+// Force kill
+await sandbox.exec("pkill -9 -f server.py");
+```
+
+## Error handling
+
+```typescript
+const result = await sandbox.exec("ls /nonexistent");
+
+if (!result.success) {
+  console.error("Command failed:");
+  console.error("Exit code:", result.exitCode);
+  console.error("Error output:", result.stderr);
+}
+```
+
+## Common patterns
+
+### Install dependencies and run
+
+```typescript
+await sandbox.exec("npm install", { timeoutMs: 60_000 });
+await sandbox.exec("npm test", { timeoutMs: 30_000 });
+```
+
+### Start server and wait for readiness
+
+```typescript
+// Start server
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true
+});
+
+// Wait for port to be ready
+for (let i = 0; i < 10; i++) {
+  const check = await sandbox.exec("nc -z localhost 3000 && echo ready || echo waiting");
+  if (check.stdout.includes("ready")) {
+    break;
+  }
+  await new Promise(r => setTimeout(r, 1000));
+}
+
+const host = sandbox.expose(3000);
+console.log(`Server ready at https://${host}`);
+```
+
+### Capture output to file
+
+```typescript
+// Run and capture both stdout and stderr
+await sandbox.exec("python script.py > /tmp/output.log 2>&1");
+
+// Read the output
+const output = await sandbox.files.read("/tmp/output.log");
+console.log(output);
+```
+
+### Capture stderr for debugging
+
+When commands fail silently, redirect stderr to capture error messages:
+
+```typescript
+// Redirect stderr to stdout and capture to file
+await sandbox.exec("python script.py 2>&1 | tee /tmp/output.log");
+
+// Read captured output
+const logs = await sandbox.files.read("/tmp/output.log");
+console.log(logs);
+```
+
+### Conditional execution
+
+```typescript
+// Run only if file exists
+await sandbox.exec("test -f /app/config.json && node app.js || echo 'Config missing'");
+
+// Chain with error handling
+await sandbox.exec("npm test || (echo 'Tests failed' && exit 1)");
+```
+
+## Best practices
+
+- **Set timeouts**: Always specify `timeoutMs` for potentially long operations
+- **Redirect output**: For background processes, redirect to log files (`>/tmp/log 2>&1`)
+- **Check success**: Always check `result.success` before assuming command worked
+- **Use background for servers**: Don't block on long-running processes
+- **Clean up processes**: Kill background processes before terminating sandbox
+- **Escape carefully**: Be mindful of shell escaping when passing user input
+
+## Limitations
+
+- Max timeout per command: 60 seconds
+- Background processes continue until sandbox stops or you kill them
+- No interactive TTY support
+- Commands run as root inside the container
