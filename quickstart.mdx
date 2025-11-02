@@ -9,19 +9,19 @@ Install the Sandbox SDK using your preferred package manager:
 
 <CodeGroup>
 ```bash npm
-npm install @usesandbox/sdk
+npm install @simplesandbox/sdk
 ```
 
 ```bash yarn
-yarn add @usesandbox/sdk
+yarn add @simplesandbox/sdk
 ```
 
 ```bash pnpm
-pnpm add @usesandbox/sdk
+pnpm add @simplesandbox/sdk
 ```
 
 ```bash bun
-bun add @usesandbox/sdk
+bun add @simplesandbox/sdk
 ```
 </CodeGroup>
 
@@ -36,7 +36,7 @@ export SANDBOX_API_KEY=your-api-key-here
 Or pass it directly when initializing the client:
 
 ```typescript
-import { Sandbox } from "@usesandbox/sdk";
+import { Sandbox } from "@simplesandbox/sdk";
 
 const client = Sandbox({
   apiKey: "your-api-key-here"
@@ -121,7 +121,7 @@ await sandbox.kill();
 ## Complete Example
 
 ```typescript
-import { Sandbox } from "@usesandbox/sdk";
+import { Sandbox } from "@simplesandbox/sdk";
 
 const client = Sandbox();
 
