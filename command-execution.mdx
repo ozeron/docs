@@ -7,6 +7,14 @@ description: "Execute commands and run background processes in sandboxes"
 
 Execute shell commands inside sandboxes using the `exec()` method. Commands run via `/bin/sh -c`, supporting pipes, variables, and shell features.
 
+## Prerequisites
+
+Before executing commands, ensure you have:
+
+- Installed the Sandbox SDK ([see Quickstart](/quickstart))
+- Created a sandbox instance
+- Basic familiarity with shell commands and async/await in JavaScript/TypeScript
+
 ## Basic execution
 
 ```typescript
@@ -231,7 +239,7 @@ console.log(output);
 
 ### Capture stderr for debugging
 
-When commands fail silently, redirect stderr to capture error messages:
+To capture error messages when commands fail silently, redirect stderr:
 
 ```typescript
 // Redirect stderr to stdout and capture to file
