@@ -30,9 +30,6 @@ await sandbox.exec("npm install && npm test");
 
 // Variables and globs
 await sandbox.exec("for f in *.txt; do echo $f; done");
-
-// Environment variables
-await sandbox.exec("export PORT=3000 && node server.js");
 ```
 
 ## Options
@@ -49,6 +46,62 @@ const result = await sandbox.exec("npm install", {
 
 <Note>
 Max per-command timeout is 60 seconds. For long-running servers, use <code>background: true</code> and redirect output to a log file (for example, <code>>/tmp/server.log 2>&1</code>).
+</Note>
+
+### Environment variables
+
+Pass environment variables to individual commands using the `env` option:
+
+```typescript
+// Single environment variable
+const result = await sandbox.exec("echo $MY_VAR", {
+  env: { MY_VAR: "hello world" }
+});
+
+// Multiple environment variables
+await sandbox.exec("node app.js", {
+  env: {
+    NODE_ENV: "production",
+    PORT: "3000",
+    API_KEY: "secret-key-12345",
+    DEBUG: "true"
+  }
+});
+
+// Use in shell commands
+await sandbox.exec("echo Database: $DB_URL", {
+  env: { DB_URL: "postgresql://localhost:5432/mydb" }
+});
+```
+
+Environment variables are merged with the sandbox's existing environment, with your custom values taking precedence:
+
+```typescript
+// Start a Node.js server with environment configuration
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true,
+  env: {
+    NODE_ENV: "production",
+    PORT: "8080",
+    DATABASE_URL: "postgres://user:pass@db:5432/app"
+  }
+});
+
+// Run Python script with custom environment
+await sandbox.exec("python app.py", {
+  env: {
+    PYTHONPATH: "/app/lib",
+    FLASK_ENV: "development",
+    SECRET_KEY: "my-secret-key"
+  }
+});
+```
+
+<Note>
+Environment variables are only set for the specific command execution. To persist environment variables across multiple commands, either:
+- Pass the same <code>env</code> object to each <code>exec()</code> call
+- Use shell export syntax: <code>export VAR=value && command</code>
+- Write them to a file and source it: <code>source /tmp/env.sh && command</code>
 </Note>
 
 ### Standard input
@@ -138,7 +191,10 @@ if (!result.success) {
 
 ```typescript
 await sandbox.exec("npm install", { timeoutMs: 60_000 });
-await sandbox.exec("npm test", { timeoutMs: 30_000 });
+await sandbox.exec("npm test", {
+  timeoutMs: 30_000,
+  env: { NODE_ENV: "test", CI: "true" }
+});
 ```
 
 ### Start server and wait for readiness
@@ -196,14 +252,45 @@ await sandbox.exec("test -f /app/config.json && node app.js || echo 'Config miss
 await sandbox.exec("npm test || (echo 'Tests failed' && exit 1)");
 ```
 
+### Using environment variables with background processes
+
+Combine `env` with `background` for configurable long-running services:
+
+```typescript
+// Start a web server with custom configuration
+await sandbox.exec("node server.js >/tmp/server.log 2>&1", {
+  background: true,
+  env: {
+    NODE_ENV: "production",
+    PORT: "3000",
+    API_KEY: process.env.MY_API_KEY, // Pass through from your environment
+    DATABASE_URL: "postgresql://localhost/mydb",
+    LOG_LEVEL: "info"
+  }
+});
+
+// Give the server time to start
+await new Promise(r => setTimeout(r, 2000));
+
+// Expose the port
+const host = sandbox.expose(3000);
+console.log(`Server running at https://${host}`);
+
+// Check server logs if needed
+const logs = await sandbox.exec("tail -n 50 /tmp/server.log");
+console.log(logs.stdout);
+```
+
 ## Best practices
 
 - **Set timeouts**: Always specify `timeoutMs` for potentially long operations
+- **Use env option**: Prefer the `env` option over inline `export` commands for cleaner, more maintainable code
 - **Redirect output**: For background processes, redirect to log files (`>/tmp/log 2>&1`)
 - **Check success**: Always check `result.success` before assuming command worked
 - **Use background for servers**: Don't block on long-running processes
 - **Clean up processes**: Kill background processes before terminating sandbox
 - **Escape carefully**: Be mindful of shell escaping when passing user input
+- **Secure secrets**: Use the `env` option to pass sensitive data instead of embedding it in command strings
 
 ## Limitations
 
