@@ -23,6 +23,7 @@
                             "sandbox-management",
                             "files",
                             "command-execution",
+                            "interactive-terminals",
                             "networking"
                         ]
                     },
