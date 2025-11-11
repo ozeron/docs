@@ -95,21 +95,19 @@ const sandbox = await client.sandboxes.create({
   }
 });
 
-// First run: slow, downloads all packages
+// First install: downloads all packages
 await sandbox.exec("npm install");
-
-// Delete sandbox
 await sandbox.kill();
 
 // Create new sandbox with same volume
 const sandbox2 = await client.sandboxes.create({
   image: "node:20",
   volumes: {
-    "/root/.npm": "npm_cache"  // Reuse cached packages
+    "/root/.npm": "npm_cache"
   }
 });
 
-// Second run: fast, uses cached packages
+// Second install: uses cached packages
 await sandbox2.exec("npm install");
 ```
 
@@ -123,21 +121,17 @@ const sandbox = await client.sandboxes.create({
   }
 });
 
-// Build project
 await sandbox.exec("cargo build --release");
-
-// Artifacts stored in /build persist after sandbox deletion
 await sandbox.kill();
 
-// Later: reuse artifacts
+// Reuse artifacts in new sandbox
 const sandbox2 = await client.sandboxes.create({
   image: "rust:latest",
   volumes: {
-    "/build": "rust_artifacts"  // Same volume, same artifacts
+    "/build": "rust_artifacts"
   }
 });
 
-// Check preserved artifacts
 const result = await sandbox2.exec("ls -lh /build");
 console.log(result.stdout);
 ```
@@ -159,16 +153,12 @@ const sandbox = await client.sandboxes.create({
   }
 });
 
-// Start PostgreSQL in background
 await sandbox.exec(
   "docker-entrypoint.sh postgres >/tmp/postgres.log 2>&1",
   { background: true }
 );
 
-// Wait for database to be ready
 await new Promise(r => setTimeout(r, 5000));
-
-// Database data persists across sandbox restarts
 ```
 
 ### Workspace persistence
@@ -185,23 +175,23 @@ const sandbox1 = await client.sandboxes.create({
 await sandbox1.exec("cd /workspace && git clone https://github.com/user/repo.git");
 await sandbox1.kill();
 
-// Session 2: Continue where you left off
+// Session 2: same files in new sandbox
 const sandbox2 = await client.sandboxes.create({
   image: "python:3.11",
   volumes: {
-    "/workspace": "my_project"  // Same files, different sandbox
+    "/workspace": "my_project"
   }
 });
 
 const files = await sandbox2.exec("ls /workspace");
-console.log(files.stdout);  // Shows previously cloned repo
+console.log(files.stdout);
 ```
 
 ## Volume management
 
-### Checking volume attachment
+### Volume attachment
 
-Volumes can only be attached to one sandbox at a time:
+Only one sandbox can use a volume at a time:
 
 ```typescript
 // Create sandbox with volume
@@ -233,7 +223,7 @@ const sandbox2 = await client.sandboxes.create({
 
 ### Regional constraints
 
-Volumes must be in the same region as the sandbox:
+Volumes and sandboxes must be in the same region:
 
 ```typescript
 // Volume created in IAD region with first sandbox
