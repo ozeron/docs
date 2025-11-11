@@ -56,12 +56,14 @@ When connected via CLI:
 ### Creating a terminal via SDK
 
 ```typescript
-const { pid, wsUrl } = await sandbox.terminals.create({
+const { terminal, wsUrl } = await sandbox.terminals.create({
   shell: "bash",  // Optional: bash, zsh, fish, sh
   cwd: "/app",    // Optional: working directory
   cols: 80,       // Optional: terminal width
   rows: 24        // Optional: terminal height
 });
+
+// terminal = { id, sandboxId, shell, status, createdAt }
 ```
 
 <Accordion title="Using raw API directly">
@@ -213,9 +215,9 @@ const term2 = await sandbox.terminals.create({
   cwd: "/home"
 });
 
-// Each has its own PID and WebSocket URL
-console.log(term1.pid);  // 123
-console.log(term2.pid);  // 456
+// Each has its own terminal ID and WebSocket URL
+console.log(term1.terminal.id);  // "123"
+console.log(term2.terminal.id);  // "456"
 ```
 
 ### List terminals
