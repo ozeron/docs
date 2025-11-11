@@ -112,6 +112,26 @@ Environment variables are only set for the specific command execution. To persis
 - Write them to a file and source it: <code>source /tmp/env.sh && command</code>
 </Note>
 
+### Working directory
+
+Set a persistent working directory for commands:
+
+```typescript
+sandbox.cwd("/app/project");
+
+// Subsequent commands run in /app/project
+await sandbox.exec("bun install");
+await sandbox.exec("bun test");
+
+// Override for a single command
+await sandbox.exec("ls", { cwd: "/tmp" });
+
+// Get current directory
+console.log(sandbox.getCwd());  // "/app/project"
+```
+
+Working directory persists across commands and affects `exec()` and file operations.
+
 ### Standard input
 
 Pass data to stdin:
@@ -140,6 +160,29 @@ await sandbox.exec("python server.py >/tmp/server.log 2>&1", {
 // Command returns immediately
 // Server continues running
 ```
+
+### Real-time output streaming
+
+Stream command output with callbacks:
+
+```typescript
+await sandbox.exec("npm install && npm test", {
+  onStdout: (line) => console.log(line),
+  onStderr: (line) => console.error(line)
+});
+
+// Stream logs from background process
+await sandbox.exec("python server.py 2>&1", {
+  background: true,
+  onStdout: (line) => {
+    if (line.includes("ERROR")) {
+      console.error("Server error:", line);
+    }
+  }
+});
+```
+
+Callbacks receive output line-by-line as commands execute.
 
 ### Managing background processes
 

@@ -53,10 +53,18 @@ When connected via CLI:
 
 ## Browser integration
 
-### Creating a terminal via API
+### Creating a terminal via SDK
 
-Create a new terminal session and get a WebSocket URL:
+```typescript
+const { pid, wsUrl } = await sandbox.terminals.create({
+  shell: "bash",  // Optional: bash, zsh, fish, sh
+  cwd: "/app",    // Optional: working directory
+  cols: 80,       // Optional: terminal width
+  rows: 24        // Optional: terminal height
+});
+```
 
+<Accordion title="Using raw API directly">
 ```typescript
 const response = await fetch(
   `/api/v1/sandboxes/${sandboxId}/terminals`,
@@ -65,19 +73,17 @@ const response = await fetch(
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      shell: "bash",  // Optional: bash, zsh, fish, sh
-      cwd: "/app",    // Optional: working directory
-      cols: 80,       // Optional: terminal width
-      rows: 24        // Optional: terminal height
+      shell: "bash",
+      cwd: "/app",
+      cols: 80,
+      rows: 24
     })
   }
 );
 
 const { terminal, wsUrl } = await response.json();
-
-// terminal = { id, sandboxId, shell, status, createdAt }
-// wsUrl = "wss://host/api/v1/sandboxes/sbx_abc/terminals/123/ws"
 ```
+</Accordion>
 
 ### Connecting via WebSocket
 
@@ -152,14 +158,8 @@ export function SandboxTerminal({ sandboxId }: { sandboxId: string }) {
     term.open(terminalRef.current);
     fitAddon.fit();
 
-    // 2. Create terminal via API
-    fetch(`/api/v1/sandboxes/${sandboxId}/terminals`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shell: "bash" }),
-    })
-      .then(res => res.json())
+    // 2. Create terminal via SDK
+    sandbox.terminals.create({ shell: "bash" })
       .then(({ wsUrl }) => {
         // 3. Connect WebSocket
         const ws = new WebSocket(wsUrl);
@@ -202,22 +202,20 @@ Each sandbox can have multiple independent terminal sessions:
 
 ```typescript
 // Create terminal 1
-const term1 = await fetch(`/api/v1/sandboxes/${sandboxId}/terminals`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ shell: "bash", cwd: "/app" })
-}).then(r => r.json());
+const term1 = await sandbox.terminals.create({
+  shell: "bash",
+  cwd: "/app"
+});
 
 // Create terminal 2
-const term2 = await fetch(`/api/v1/sandboxes/${sandboxId}/terminals`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ shell: "zsh", cwd: "/home" })
-}).then(r => r.json());
+const term2 = await sandbox.terminals.create({
+  shell: "zsh",
+  cwd: "/home"
+});
 
-// Each has its own terminal ID and WebSocket URL
-console.log(term1.terminal.id);  // "123"
-console.log(term2.terminal.id);  // "456"
+// Each has its own PID and WebSocket URL
+console.log(term1.pid);  // 123
+console.log(term2.pid);  // 456
 ```
 
 ### List terminals

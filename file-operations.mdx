@@ -208,10 +208,30 @@ fileOperationsDemo();
   This example demonstrates the complete cycle: write → execute → read → verify.
 </Check>
 
+## Working with Relative Paths
+
+File operations support relative paths with `sandbox.cwd()`:
+
+```typescript
+sandbox.cwd("/app/project");
+
+// Relative paths resolve to /app/project
+const config = await sandbox.files.read("config.json");
+await sandbox.files.write("output.txt", "result data");
+
+// Override cwd for single operation
+const logs = await sandbox.files.read("error.log", { cwd: "/var/log" });
+```
+
+Relative paths resolve to:
+1. The `cwd` option if provided
+2. The persistent `sandbox.cwd()` if set
+3. The sandbox default directory (usually `/`)
+
 ## Best Practices
 
 <Tip>
-  **Use Absolute Paths**: Always use absolute paths (starting with `/`) for file operations to avoid ambiguity.
+  **Choose Path Style**: Use absolute paths (starting with `/`) for clarity, or set a working directory with `sandbox.cwd()` and use relative paths for cleaner code.
 </Tip>
 
 <Tip>

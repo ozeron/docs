@@ -1,0 +1,366 @@
+---
+title: "Persistent Volumes"
+description: "Store and reuse data across sandbox sessions"
+---
+
+<Warning>
+**Beta Feature**: Persistent volumes are in beta and currently free (not billed). Pricing will be announced before general availability.
+</Warning>
+
+## Overview
+
+Persistent volumes store data that survives sandbox restarts. Use them for package caches, build artifacts, databases, or any data you want to preserve.
+
+## Prerequisites
+
+- Installed the Sandbox SDK ([see Quickstart](/quickstart))
+- Created a sandbox instance
+- Basic understanding of file paths
+
+## Creating sandboxes with volumes
+
+### Simple volume (1GB default)
+
+Create a volume by specifying its name and mount path:
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/workspace": "my_packages"  // Mount volume "my_packages" at /workspace
+  }
+});
+```
+
+### Custom volume size
+
+Specify volume size in gigabytes (1-100 GB):
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/cache": {
+      name: "build_cache",
+      sizeGb: 5  // 5 GB volume
+    }
+  }
+});
+```
+
+<Note>
+Current limitation: **only one volume** can be mounted per sandbox. Attempting to mount multiple volumes will result in an error.
+</Note>
+
+## How volumes work
+
+### Volume lifecycle
+
+1. **First use**: Volume is created automatically when you create a sandbox
+2. **Reuse**: Subsequent sandboxes can mount the same volume by name
+3. **Detachment**: Volume detaches when sandbox is deleted
+4. **Persistence**: Data remains on the volume after sandbox deletion
+5. **Cleanup**: Delete the volume explicitly when no longer needed
+
+### Volume naming rules
+
+Volume names must follow these rules:
+
+- Lowercase letters, numbers, and underscores only
+- Maximum 30 characters
+- Examples: `node_modules`, `build_cache`, `postgres_data`
+
+```typescript
+// ✅ Valid names
+"my_packages"
+"build_cache"
+"workspace_2024"
+
+// ❌ Invalid names
+"My-Packages"     // No uppercase or hyphens
+"cache@v2"        // No special characters
+"very_long_volume_name_that_exceeds_thirty_characters"  // Too long
+```
+
+## Common patterns
+
+### Package cache persistence
+
+```typescript
+// Create sandbox with package cache
+const sandbox = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/root/.npm": "npm_cache"  // Persist npm cache
+  }
+});
+
+// First run: slow, downloads all packages
+await sandbox.exec("npm install");
+
+// Delete sandbox
+await sandbox.kill();
+
+// Create new sandbox with same volume
+const sandbox2 = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/root/.npm": "npm_cache"  // Reuse cached packages
+  }
+});
+
+// Second run: fast, uses cached packages
+await sandbox2.exec("npm install");
+```
+
+### Build artifact storage
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "rust:latest",
+  volumes: {
+    "/build": "rust_artifacts"
+  }
+});
+
+// Build project
+await sandbox.exec("cargo build --release");
+
+// Artifacts stored in /build persist after sandbox deletion
+await sandbox.kill();
+
+// Later: reuse artifacts
+const sandbox2 = await client.sandboxes.create({
+  image: "rust:latest",
+  volumes: {
+    "/build": "rust_artifacts"  // Same volume, same artifacts
+  }
+});
+
+// Check preserved artifacts
+const result = await sandbox2.exec("ls -lh /build");
+console.log(result.stdout);
+```
+
+### Database persistence
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "postgres:16",
+  volumes: {
+    "/var/lib/postgresql/data": {
+      name: "postgres_data",
+      sizeGb: 10  // 10 GB for database
+    }
+  },
+  env: {
+    POSTGRES_PASSWORD: "secret",
+    POSTGRES_DB: "myapp"
+  }
+});
+
+// Start PostgreSQL in background
+await sandbox.exec(
+  "docker-entrypoint.sh postgres >/tmp/postgres.log 2>&1",
+  { background: true }
+);
+
+// Wait for database to be ready
+await new Promise(r => setTimeout(r, 5000));
+
+// Database data persists across sandbox restarts
+```
+
+### Workspace persistence
+
+```typescript
+// Session 1: Create and populate workspace
+const sandbox1 = await client.sandboxes.create({
+  image: "python:3.11",
+  volumes: {
+    "/workspace": "my_project"
+  }
+});
+
+await sandbox1.exec("cd /workspace && git clone https://github.com/user/repo.git");
+await sandbox1.kill();
+
+// Session 2: Continue where you left off
+const sandbox2 = await client.sandboxes.create({
+  image: "python:3.11",
+  volumes: {
+    "/workspace": "my_project"  // Same files, different sandbox
+  }
+});
+
+const files = await sandbox2.exec("ls /workspace");
+console.log(files.stdout);  // Shows previously cloned repo
+```
+
+## Volume management
+
+### Checking volume attachment
+
+Volumes can only be attached to one sandbox at a time:
+
+```typescript
+// Create sandbox with volume
+const sandbox1 = await client.sandboxes.create({
+  image: "node:20",
+  volumes: { "/data": "shared_volume" }
+});
+
+// Try to attach same volume to another sandbox (will fail)
+try {
+  const sandbox2 = await client.sandboxes.create({
+    image: "node:20",
+    volumes: { "/data": "shared_volume" }
+  });
+} catch (error) {
+  console.error("Volume already attached!");
+  // Error: Volume "shared_volume" is already attached to sandbox sbx_...
+}
+
+// Delete first sandbox to release volume
+await sandbox1.kill();
+
+// Now you can attach to a new sandbox
+const sandbox2 = await client.sandboxes.create({
+  image: "node:20",
+  volumes: { "/data": "shared_volume" }  // ✅ Works now
+});
+```
+
+### Regional constraints
+
+Volumes must be in the same region as the sandbox:
+
+```typescript
+// Volume created in IAD region with first sandbox
+const sandbox1 = await client.sandboxes.create({
+  image: "node:20",
+  volumes: { "/data": "my_volume" }
+  // Sandbox created in IAD (default)
+});
+
+// Later: trying to use in different region (will fail)
+try {
+  const sandbox2 = await client.sandboxes.create({
+    image: "node:20",
+    region: "lax",  // Different region
+    volumes: { "/data": "my_volume" }
+  });
+} catch (error) {
+  // Error: Volume "my_volume" is in region iad, but sandbox will be created in lax
+}
+```
+
+## Error handling
+
+### Common volume errors
+
+```typescript
+try {
+  const sandbox = await client.sandboxes.create({
+    image: "node:20",
+    volumes: {
+      "/data": "my-volume-name"  // Invalid: contains hyphen
+    }
+  });
+} catch (error) {
+  console.error(error.message);
+  // "Volume name must be lowercase alphanumeric and underscores, max 30 characters"
+}
+```
+
+### Volume size limits
+
+```typescript
+try {
+  const sandbox = await client.sandboxes.create({
+    image: "node:20",
+    volumes: {
+      "/data": {
+        name: "huge_volume",
+        sizeGb: 500  // Exceeds max of 100 GB
+      }
+    }
+  });
+} catch (error) {
+  console.error("Size must be 1-100 GB");
+}
+```
+
+### Multiple volumes limitation
+
+```typescript
+try {
+  const sandbox = await client.sandboxes.create({
+    image: "node:20",
+    volumes: {
+      "/data1": "volume1",
+      "/data2": "volume2"  // Not supported
+    }
+  });
+} catch (error) {
+  console.error(error.message);
+  // "Only one volume can be mounted per sandbox"
+}
+```
+
+## Best practices
+
+<Tip>
+**Use descriptive names**: Name volumes by purpose (`node_cache`, `build_artifacts`) rather than generic names (`volume1`, `data`)
+</Tip>
+
+<Tip>
+**Right-size volumes**: Start with 1-5 GB and increase only if needed. Volumes cannot be resized after creation.
+</Tip>
+
+<Tip>
+**Clean up unused volumes**: Delete volumes you no longer need to avoid clutter and future billing
+</Tip>
+
+<Warning>
+**One volume per sandbox**: Current limitation allows only one volume per sandbox. Plan your directory structure accordingly.
+</Warning>
+
+<Warning>
+**Single attachment**: A volume can only be attached to one sandbox at a time. Delete the sandbox to release the volume.
+</Warning>
+
+## Limitations
+
+- **One volume per sandbox**: Current limitation allows only one volume mount per sandbox
+- **Size range**: 1-100 GB per volume
+- **Regional binding**: Volumes cannot move between regions
+- **Single attachment**: One volume can only be attached to one sandbox at a time
+- **No resizing**: Volume size is fixed at creation
+- **Beta feature**: Not currently billed (pricing TBA before GA)
+
+## Pricing
+
+<Note>
+Persistent volumes are free during beta. Pricing will be announced before general availability.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="File Operations" icon="file" href="/file-operations">
+    Read and write files to mounted volumes
+  </Card>
+
+  <Card title="Command Execution" icon="terminal" href="/command-execution">
+    Run commands that use persistent storage
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with the Sandbox SDK
+  </Card>
+
+  <Card title="API Reference" icon="code" href="/api-reference/introduction">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

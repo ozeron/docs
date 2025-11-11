@@ -24,6 +24,7 @@
                             "files",
                             "command-execution",
                             "interactive-terminals",
+                            "persistence",
                             "networking"
                         ]
                     },
