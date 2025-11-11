@@ -9,7 +9,7 @@ description: "Store and reuse data across sandbox sessions"
 
 ## Overview
 
-Persistent volumes store data that survives sandbox restarts. Use them for package caches, build artifacts, databases, or any data you want to preserve.
+Persistent volumes store data that survives sandbox restarts. With one volume per sandbox, the recommended approach is to mount your entire workspace.
 
 ## Prerequisites
 
@@ -17,126 +17,135 @@ Persistent volumes store data that survives sandbox restarts. Use them for packa
 - Created a sandbox instance
 - Basic understanding of file paths
 
-## Creating sandboxes with volumes
+## Quick start
 
-### Simple volume (1GB default)
-
-Create a volume by specifying its name and mount path:
+Mount a volume at `/workspace` to persist your entire project:
 
 ```typescript
 const sandbox = await client.sandboxes.create({
   image: "node:20",
   volumes: {
-    "/workspace": "my_packages"  // Mount volume "my_packages" at /workspace
+    "/workspace": "my_project"
+  }
+});
+
+// Write code
+await sandbox.files.write("/workspace/app.js", "console.log('hello')");
+
+// Install dependencies
+sandbox.cwd("/workspace");
+await sandbox.exec("npm install express");
+
+// Everything persists after deletion
+await sandbox.kill();
+
+// Create new sandbox - all files still there
+const sandbox2 = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/workspace": "my_project"
+  }
+});
+
+const result = await sandbox2.exec("ls /workspace");
+console.log(result.stdout); // Shows app.js, node_modules, etc.
+```
+
+<Note>
+Current limitation: **only one volume** per sandbox. Mount your entire workspace at `/workspace` or `/app` to persist everything.
+</Note>
+
+## Creating volumes
+
+### Simple volume (1GB default)
+
+```typescript
+const sandbox = await client.sandboxes.create({
+  image: "node:20",
+  volumes: {
+    "/workspace": "my_project"
   }
 });
 ```
 
 ### Custom volume size
 
-Specify volume size in gigabytes (1-100 GB):
+Specify size in gigabytes (1-100 GB):
 
 ```typescript
 const sandbox = await client.sandboxes.create({
   image: "node:20",
   volumes: {
-    "/cache": {
-      name: "build_cache",
-      sizeGb: 5  // 5 GB volume
+    "/workspace": {
+      name: "my_project",
+      sizeGb: 10
     }
   }
 });
 ```
 
-<Note>
-Current limitation: **only one volume** can be mounted per sandbox. Attempting to mount multiple volumes will result in an error.
-</Note>
+## Volume lifecycle
 
-## How volumes work
+1. **Create**: Volume is created automatically on first use
+2. **Persist**: Data remains after sandbox deletion
+3. **Reuse**: Mount by name in new sandboxes
+4. **Delete**: Explicitly delete when no longer needed
 
-### Volume lifecycle
+## Common workflows
 
-1. **First use**: Volume is created automatically when you create a sandbox
-2. **Reuse**: Subsequent sandboxes can mount the same volume by name
-3. **Detachment**: Volume detaches when sandbox is deleted
-4. **Persistence**: Data remains on the volume after sandbox deletion
-5. **Cleanup**: Delete the volume explicitly when no longer needed
+### Full workspace persistence
 
-### Volume naming rules
-
-Volume names must follow these rules:
-
-- Lowercase letters, numbers, and underscores only
-- Maximum 30 characters
-- Examples: `node_modules`, `build_cache`, `postgres_data`
+Mount at `/workspace` to persist code, dependencies, and build artifacts:
 
 ```typescript
-// ✅ Valid names
-"my_packages"
-"build_cache"
-"workspace_2024"
-
-// ❌ Invalid names
-"My-Packages"     // No uppercase or hyphens
-"cache@v2"        // No special characters
-"very_long_volume_name_that_exceeds_thirty_characters"  // Too long
-```
-
-## Common patterns
-
-### Package cache persistence
-
-```typescript
-// Create sandbox with package cache
 const sandbox = await client.sandboxes.create({
   image: "node:20",
-  volumes: {
-    "/root/.npm": "npm_cache"  // Persist npm cache
-  }
+  volumes: { "/workspace": "my_app" }
 });
 
-// First install: downloads all packages
+sandbox.cwd("/workspace");
+await sandbox.exec("git clone https://github.com/user/repo.git .");
 await sandbox.exec("npm install");
+await sandbox.exec("npm run build");
 await sandbox.kill();
 
-// Create new sandbox with same volume
+// Later: everything is still there
 const sandbox2 = await client.sandboxes.create({
   image: "node:20",
-  volumes: {
-    "/root/.npm": "npm_cache"
-  }
+  volumes: { "/workspace": "my_app" }
 });
 
-// Second install: uses cached packages
-await sandbox2.exec("npm install");
+sandbox2.cwd("/workspace");
+await sandbox2.exec("npm test");  // No reinstall needed
 ```
 
-### Build artifact storage
+### Iterative development
 
 ```typescript
+// Day 1: Setup
 const sandbox = await client.sandboxes.create({
-  image: "rust:latest",
-  volumes: {
-    "/build": "rust_artifacts"
-  }
+  image: "python:3.11",
+  volumes: { "/app": "ml_project" }
 });
 
-await sandbox.exec("cargo build --release");
+sandbox.cwd("/app");
+await sandbox.exec("pip install torch numpy pandas");
+await sandbox.files.write("/app/train.py", pythonCode);
 await sandbox.kill();
 
-// Reuse artifacts in new sandbox
+// Day 2: Continue where you left off
 const sandbox2 = await client.sandboxes.create({
-  image: "rust:latest",
-  volumes: {
-    "/build": "rust_artifacts"
-  }
+  image: "python:3.11",
+  volumes: { "/app": "ml_project" }
 });
 
-const result = await sandbox2.exec("ls -lh /build");
-console.log(result.stdout);
+sandbox2.cwd("/app");
+await sandbox2.exec("python train.py");  // All deps already installed
 ```
 
 ### Database persistence
+
+For services that only need data storage:
 
 ```typescript
 const sandbox = await client.sandboxes.create({
@@ -144,7 +153,7 @@ const sandbox = await client.sandboxes.create({
   volumes: {
     "/var/lib/postgresql/data": {
       name: "postgres_data",
-      sizeGb: 10  // 10 GB for database
+      sizeGb: 10
     }
   },
   env: {
@@ -157,34 +166,6 @@ await sandbox.exec(
   "docker-entrypoint.sh postgres >/tmp/postgres.log 2>&1",
   { background: true }
 );
-
-await new Promise(r => setTimeout(r, 5000));
-```
-
-### Workspace persistence
-
-```typescript
-// Session 1: Create and populate workspace
-const sandbox1 = await client.sandboxes.create({
-  image: "python:3.11",
-  volumes: {
-    "/workspace": "my_project"
-  }
-});
-
-await sandbox1.exec("cd /workspace && git clone https://github.com/user/repo.git");
-await sandbox1.kill();
-
-// Session 2: same files in new sandbox
-const sandbox2 = await client.sandboxes.create({
-  image: "python:3.11",
-  volumes: {
-    "/workspace": "my_project"
-  }
-});
-
-const files = await sandbox2.exec("ls /workspace");
-console.log(files.stdout);
 ```
 
 ## Volume management
@@ -194,30 +175,28 @@ console.log(files.stdout);
 Only one sandbox can use a volume at a time:
 
 ```typescript
-// Create sandbox with volume
 const sandbox1 = await client.sandboxes.create({
   image: "node:20",
-  volumes: { "/data": "shared_volume" }
+  volumes: { "/workspace": "shared_vol" }
 });
 
-// Try to attach same volume to another sandbox (will fail)
+// This fails - volume already attached
 try {
   const sandbox2 = await client.sandboxes.create({
     image: "node:20",
-    volumes: { "/data": "shared_volume" }
+    volumes: { "/workspace": "shared_vol" }
   });
 } catch (error) {
-  console.error("Volume already attached!");
-  // Error: Volume "shared_volume" is already attached to sandbox sbx_...
+  // Error: Volume "shared_vol" is already attached
 }
 
-// Delete first sandbox to release volume
+// Release volume by deleting sandbox
 await sandbox1.kill();
 
-// Now you can attach to a new sandbox
+// Now it works
 const sandbox2 = await client.sandboxes.create({
   image: "node:20",
-  volumes: { "/data": "shared_volume" }  // ✅ Works now
+  volumes: { "/workspace": "shared_vol" }
 });
 ```
 
@@ -226,74 +205,77 @@ const sandbox2 = await client.sandboxes.create({
 Volumes and sandboxes must be in the same region:
 
 ```typescript
-// Volume created in IAD region with first sandbox
+// Volume created in IAD
 const sandbox1 = await client.sandboxes.create({
   image: "node:20",
-  volumes: { "/data": "my_volume" }
-  // Sandbox created in IAD (default)
+  volumes: { "/workspace": "my_vol" }
 });
 
-// Later: trying to use in different region (will fail)
+// This fails - different region
 try {
   const sandbox2 = await client.sandboxes.create({
     image: "node:20",
-    region: "lax",  // Different region
-    volumes: { "/data": "my_volume" }
+    region: "lax",
+    volumes: { "/workspace": "my_vol" }
   });
 } catch (error) {
-  // Error: Volume "my_volume" is in region iad, but sandbox will be created in lax
+  // Error: Volume "my_vol" is in region iad
 }
+```
+
+### Volume naming rules
+
+- Lowercase letters, numbers, and underscores only
+- Maximum 30 characters
+
+```typescript
+// ✅ Valid
+"my_project"
+"workspace_2024"
+"app_v2"
+
+// ❌ Invalid
+"My-Project"  // No uppercase or hyphens
+"cache@v2"    // No special characters
 ```
 
 ## Error handling
 
-### Common volume errors
+### Common errors
 
 ```typescript
+// Invalid name
 try {
-  const sandbox = await client.sandboxes.create({
+  await client.sandboxes.create({
     image: "node:20",
-    volumes: {
-      "/data": "my-volume-name"  // Invalid: contains hyphen
-    }
+    volumes: { "/workspace": "my-project" }  // Hyphen not allowed
   });
 } catch (error) {
-  console.error(error.message);
-  // "Volume name must be lowercase alphanumeric and underscores, max 30 characters"
+  // "Volume name must be lowercase alphanumeric and underscores"
 }
-```
 
-### Volume size limits
-
-```typescript
+// Size limit exceeded
 try {
-  const sandbox = await client.sandboxes.create({
+  await client.sandboxes.create({
     image: "node:20",
     volumes: {
-      "/data": {
-        name: "huge_volume",
-        sizeGb: 500  // Exceeds max of 100 GB
-      }
+      "/workspace": { name: "big_vol", sizeGb: 500 }  // Max is 100
     }
   });
 } catch (error) {
-  console.error("Size must be 1-100 GB");
+  // "Size must be 1-100 GB"
 }
-```
 
-### Multiple volumes limitation
-
-```typescript
+// Multiple volumes
 try {
-  const sandbox = await client.sandboxes.create({
+  await client.sandboxes.create({
     image: "node:20",
     volumes: {
-      "/data1": "volume1",
-      "/data2": "volume2"  // Not supported
+      "/workspace": "vol1",
+      "/cache": "vol2"  // Only one volume allowed
     }
   });
 } catch (error) {
-  console.error(error.message);
   // "Only one volume can be mounted per sandbox"
 }
 ```
@@ -301,19 +283,19 @@ try {
 ## Best practices
 
 <Tip>
-**Use descriptive names**: Name volumes by purpose (`node_cache`, `build_artifacts`) rather than generic names (`volume1`, `data`)
+**Mount at `/workspace` or `/app`**: With one volume per sandbox, mount your entire project to persist code, dependencies, and build artifacts together.
 </Tip>
 
 <Tip>
-**Right-size volumes**: Start with 1-5 GB and increase only if needed. Volumes cannot be resized after creation.
+**Use descriptive names**: Name volumes by project or purpose (`ml_project`, `api_backend`) rather than generic names (`volume1`, `data`).
 </Tip>
 
 <Tip>
-**Clean up unused volumes**: Delete volumes you no longer need to avoid clutter and future billing
+**Right-size volumes**: Start with 1-5 GB and increase if needed. Volumes cannot be resized after creation.
 </Tip>
 
 <Warning>
-**One volume per sandbox**: Current limitation allows only one volume per sandbox. Plan your directory structure accordingly.
+**One volume per sandbox**: You can only mount one volume per sandbox. Choose your mount point carefully.
 </Warning>
 
 <Warning>
@@ -322,10 +304,10 @@ try {
 
 ## Limitations
 
-- **One volume per sandbox**: Current limitation allows only one volume mount per sandbox
+- **One volume per sandbox**: Current limitation
 - **Size range**: 1-100 GB per volume
 - **Regional binding**: Volumes cannot move between regions
-- **Single attachment**: One volume can only be attached to one sandbox at a time
+- **Single attachment**: One volume attached to one sandbox at a time
 - **No resizing**: Volume size is fixed at creation
 - **Beta feature**: Not currently billed (pricing TBA before GA)
 
